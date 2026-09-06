@@ -13,11 +13,9 @@ from asistan.cevap import cevapla
 def sor(arama: Arama, soru: str) -> None:
     baslangic = time.time()
     sonuclar = arama.ara(soru)
-    print()
-    for parca in cevapla(soru, sonuclar, akis=True):
-        print(parca, end="", flush=True)
-    kaynaklar = "; ".join(f"{s.parca.etiket()} ({s.benzerlik:.2f})" for s in sonuclar[:3])
-    print(f"\n\n[{time.time() - baslangic:.1f} sn] en yakın parçalar: {kaynaklar}")
+    print("\n" + cevapla(soru, sonuclar))
+    en_yakinlar = "; ".join(f"{s.parca.etiket()} ({s.benzerlik:.2f})" for s in sonuclar[:3])
+    print(f"[{time.time() - baslangic:.1f} sn · en yakın parçalar: {en_yakinlar}]")
 
 
 def main():

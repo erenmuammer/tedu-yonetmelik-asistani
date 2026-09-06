@@ -3,12 +3,31 @@
 Bütün vektörler bellekte tek bir matris; soru vektörüyle çarpınca cosine
 benzerlikleri çıkıyor (vektörler normalize olduğu için nokta çarpım yetiyor).
 """
+import re
 from dataclasses import dataclass
 
 import numpy as np
 
 from asistan import ayarlar, gomme, veritabani
 from asistan.parcalama import Parca
+
+
+# Öğrencilerin kullandığı bazı kelimeler yönetmelikte başka türlü geçiyor;
+# "kayıt dondurma" diye sorunca embedding "izin" maddesini bulamıyordu.
+ES_ANLAMLILAR = {
+    r"\bkayıt dondur": "izinli sayılma, izin",
+    r"\bdondur": "izin",
+    r"\bçap\b": "çift anadal",
+    r"\bgno\b": "genel not ortalaması",
+    r"\bhazırlık": "İngilizce dil okulu",
+    r"\bdevamsızlık": "derse devam",
+}
+
+
+def soruyu_genislet(soru: str) -> str:
+    """Soruya yönetmelikteki karşılık kelimeleri parantez içinde ekler."""
+    ekler = [v for k, v in ES_ANLAMLILAR.items() if re.search(k, soru.lower())]
+    return f"{soru} ({', '.join(ekler)})" if ekler else soru
 
 
 @dataclass
@@ -36,5 +55,5 @@ class Arama:
             raise SystemExit("Veritabanı boş. Önce `python indeksle.py` çalıştırın.")
 
     def ara(self, soru: str, ust_k: int = ayarlar.UST_K) -> list[Sonuc]:
-        vektor = gomme.soruyu_gom(soru)
+        vektor = gomme.soruyu_gom(soruyu_genislet(soru))
         return [Sonuc(self.parcalar[i], b) for i, b in en_yakinlar(self.matris, vektor, ust_k)]

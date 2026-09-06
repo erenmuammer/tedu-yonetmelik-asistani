@@ -1,6 +1,6 @@
 import numpy as np
 
-from asistan.arama import Sonuc, en_yakinlar, yeterli_mi
+from asistan.arama import Sonuc, en_yakinlar, soruyu_genislet, yeterli_mi
 from asistan.parcalama import Parca
 
 
@@ -21,3 +21,8 @@ def test_esik_kontrolu():
     assert yeterli_mi([Sonuc(p, 0.55), Sonuc(p, 0.2)], esik=0.4)
     assert not yeterli_mi([Sonuc(p, 0.3)], esik=0.4)
     assert not yeterli_mi([], esik=0.4)
+
+
+def test_soru_genisletme():
+    assert soruyu_genislet("Kayıt dondurma kaç dönem?") == "Kayıt dondurma kaç dönem? (izinli sayılma, izin, izin)"
+    assert soruyu_genislet("Staj kaç gün?") == "Staj kaç gün?"

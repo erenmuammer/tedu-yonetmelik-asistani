@@ -7,95 +7,100 @@ from asistan.arama import Sonuc, yeterli_mi
 RED_CEVABI = ("Bu konuda elimdeki belgelerde bilgi bulamadım. "
               "Öğrenci İşleri Müdürlüğü'ne sormanız daha doğru olur.")
 
-SISTEM_MESAJI = """Sen TED Üniversitesi'nin yönetmelik ve yönergeleri hakkında öğrencilerin sorularını cevaplayan bir asistansın. Sana soruyla ilgili olabilecek madde parçaları verilecek.
-Kurallar:
-- Sadece verilen parçalardaki bilgiyi kullan; kendi bilgini ekleme, tahmin yürütme.
-- Türkçe ve kısa cevap ver: 2-4 cümle. Başlık, kalın yazı ve uzun listeler kullanma.
-- Sayıları, süreleri ve koşulları parçada geçtiği gibi yaz.
-- Parçalar soruyu cevaplamıyorsa sadece şunu yaz: Bu konuda elimdeki belgelerde bilgi bulamadım.
-- En sona tek satır ekle, örneğin: Kaynak: Staj Yönergesi, Madde 5"""
+SISTEM_MESAJI = """Sen TED Üniversitesi'nin yönetmelik ve yönergeleri hakkında öğrencilerin sorularını cevaplayan bir asistansın.
+Sana yönetmeliklerden alınmış parçalar ve bir soru verilecek.
+- Sadece parçalardaki bilgiyi kullan; kendi bilgini ekleme, tahmin yürütme.
+- Parçalar konuyla ilgili görünse bile sorunun cevabını vermiyorsa cevap uydurma; sadece şunu yaz: Bu konuda elimdeki belgelerde bilgi bulamadım.
+- Türkçe ve kısa cevap ver: 2-4 cümle. Başlık, kalın yazı ve liste kullanma.
+- Sayıları, süreleri ve koşulları parçada geçtiği gibi yaz."""
 
-KAYNAK_SATIRI = re.compile(r"(?im)^[ \t]*kaynak[^\n]*\n")
 # qwen3 cevaba boş bir <think></think> bloğuyla başlıyor (bazen kapanış etiketi olmadan)
 DUSUNME_BLOGU = re.compile(r"^\s*<think>(?:.*?</think>)?\s*", re.S)
+KAYNAK_ISARETI = re.compile(r"(?i)\bkaynak(lar)?\s*:")
+CEVAP_ETIKETI = re.compile(r"(?i)^\s*cevap\s*:\s*")
 
 
 def baglam_metni(sonuclar: list[Sonuc]) -> str:
-    return "\n\n".join(f"[{i}] {s.parca.etiket()}:\n{s.parca.metin}" for i, s in enumerate(sonuclar, 1))
+    return "\n\n".join(f"--- Parça {i} ({s.parca.etiket()}) ---\n{s.parca.metin}"
+                       for i, s in enumerate(sonuclar, 1))
 
 
 def mesajlar(soru: str, sonuclar: list[Sonuc], model: str = ayarlar.CHAT_MODELI) -> list[dict]:
-    soru_metni = f"İLGİLİ PARÇALAR:\n\n{baglam_metni(sonuclar)}\n\nSORU: {soru}"
+    kullanici = f"{baglam_metni(sonuclar)}\n\nSoru: {soru}"
     if "qwen3" in model:
         # qwen3 yoksa önce İngilizce uzun uzun "düşünüyor", cevap 15 saniyeyi buluyor
-        soru_metni += " /no_think"
-    return [
-        {"role": "system", "content": SISTEM_MESAJI},
-        {"role": "user", "content": soru_metni},
-    ]
+        kullanici += " /no_think"
+    return [{"role": "system", "content": SISTEM_MESAJI},
+            {"role": "user", "content": kullanici}]
+
+
+def tekrarlari_sil(metin: str) -> str:
+    """Model aynı cümleyi iki kere yazabiliyor; birebir tekrar eden cümleleri atar."""
+    cumleler = re.split(r"(?<=[.!?])\s+", metin.strip())
+    gorulen, temiz = set(), []
+    for c in cumleler:
+        anahtar = c.strip().lower()
+        if anahtar and anahtar not in gorulen:
+            gorulen.add(anahtar)
+            temiz.append(c.strip())
+    return " ".join(temiz)
 
 
 def temizle(metin: str) -> str:
-    """Baştaki düşünme bloğunu atar; 'Kaynak:' satırından sonrasını keser.
+    """Modelin çıktısını toparlar.
 
-    Model bazen kaynak satırından sonra da yazmaya devam ediyordu.
+    Düşünme bloğunu ve baştaki "Cevap:" etiketini atar, modelin kendi yazdığı
+    "Kaynak:" kısmından sonrasını keser (kaynağı biz ekliyoruz), kalın yazıyı
+    ve tekrar eden cümleleri temizler, yarım kalan son cümleyi düşürür.
     """
-    metin = DUSUNME_BLOGU.sub("", metin, count=1)
-    m = KAYNAK_SATIRI.search(metin)
-    return (metin[: m.end()] if m else metin).strip()
+    metin = DUSUNME_BLOGU.sub("", metin, count=1).replace("**", "")
+    metin = CEVAP_ETIKETI.sub("", metin)
+    m = KAYNAK_ISARETI.search(metin)
+    if m:
+        metin = metin[: m.start()]
+    metin = tekrarlari_sil(metin)
+    if metin and metin[-1] not in ".!?" and metin.count(".") >= 1:
+        metin = metin[: metin.rfind(".") + 1]  # max_tokens'a takılıp yarım kalan cümle
+    return metin.strip()
 
 
-def dusunmeyi_atla(akis):
-    """Akışın başındaki <think> etiketini (ve varsa hemen ardındaki kapanışı) göstermeden geçer.
+def kaynak_satiri(sonuclar: list[Sonuc], esik: float, cevap: str = "") -> str:
+    """Cevabın dayandığı parçaları tek satırda verir.
 
-    /no_think ile blok boş geliyor; dolu gelirse metnin içinde kalır, o durumu
-    akışta ayırt etmenin bir yolu yok.
+    Model hangi parçayı kullandığını söylemiyor; cevaptaki kelimelerle en çok
+    örtüşen (ve eşiği geçen) iki parçayı kaynak sayıyoruz.
     """
-    tampon = ""
-    gecildi = False
-    for parca in akis:
-        if gecildi:
-            yield parca
-            continue
-        tampon += parca
-        bas = tampon.lstrip()
-        if "<think>".startswith(bas):
-            continue  # "<th" gibi, henüz belli değil
-        if not bas.startswith("<think>"):
-            gecildi = True
-            yield tampon
-            continue
-        kalan = bas[len("<think>"):].lstrip()
-        if kalan.startswith("</think>"):
-            kalan = kalan[len("</think>"):].lstrip()
-        elif "</think>".startswith(kalan):
-            continue
-        if kalan:
-            gecildi = True
-            yield kalan
+    kelimeler = {k for k in re.findall(r"\w{4,}", cevap.lower())}
+    adaylar = [s for s in sonuclar if s.benzerlik >= esik]
+    def ortusme(s: Sonuc) -> int:
+        return sum(1 for k in kelimeler if k in s.parca.metin.lower())
+    adaylar.sort(key=lambda s: (ortusme(s), s.benzerlik), reverse=True)
+    etiketler = []
+    for s in adaylar:
+        if s.parca.etiket() not in etiketler:
+            etiketler.append(s.parca.etiket())
+    return "Kaynak: " + " · ".join(etiketler[:2])
 
 
-_model_id = None
+_model_idler: dict[str, str] = {}
 
 
-def _model() -> str:
-    global _model_id
-    if _model_id is None:
-        _model_id = foundry.modeli_yukle(ayarlar.CHAT_MODELI)
-    return _model_id
+def _model(alias: str) -> str:
+    if alias not in _model_idler:
+        _model_idler[alias] = foundry.modeli_yukle(alias)
+    return _model_idler[alias]
 
 
-def cevapla(soru: str, sonuclar: list[Sonuc], akis: bool = False,
-            esik: float = ayarlar.BENZERLIK_ESIGI):
-    """Cevabı tek parça string olarak, akis=True ise parça parça (generator) döner."""
+def cevapla(soru: str, sonuclar: list[Sonuc], esik: float = ayarlar.BENZERLIK_ESIGI,
+            model: str = ayarlar.CHAT_MODELI) -> str:
     if not yeterli_mi(sonuclar, esik):
         # eşiğin altındaysa modele hiç sormuyoruz; küçük modeller alakasız
         # bağlamdan da cevap uydurmaya meyilli
-        return iter([RED_CEVABI]) if akis else RED_CEVABI
+        return RED_CEVABI
     yanit = foundry.istemci().chat.completions.create(
-        model=_model(), messages=mesajlar(soru, sonuclar),
-        temperature=0.0, max_tokens=350, stream=akis)
-    if not akis:
-        return temizle(yanit.choices[0].message.content)
-    return kaynaktan_sonra_kes(dusunmeyi_atla(
-        c.choices[0].delta.content for c in yanit if c.choices and c.choices[0].delta.content))
+        model=_model(model), messages=mesajlar(soru, sonuclar, model),
+        temperature=0.1, max_tokens=300)
+    cevap = temizle(yanit.choices[0].message.content)
+    if "bilgi bulamadım" in cevap.lower():
+        return RED_CEVABI
+    return f"{cevap}\n{kaynak_satiri(sonuclar, esik, cevap)}"

@@ -37,7 +37,8 @@ with st.sidebar:
     st.markdown("**Belgeler:**  \n" + "  \n".join(f"- {ad}" for ad in ayarlar.BELGE_ADLARI.values()))
 
 if "soru" not in st.session_state:
-    st.session_state.soru = ""
+    # ?soru=... ile gelen linkler doğrudan soruyu açar
+    st.session_state.soru = st.query_params.get("soru", "")
 
 st.write("Örnek sorular:")
 sutunlar = st.columns(2)
@@ -51,11 +52,9 @@ if soru.strip():
     baslangic = time.time()
     with st.spinner("Belgeler taranıyor..."):
         sonuclar = arama_motoru().ara(soru, ust_k)
-    yer = st.empty()
-    metin = ""
-    for parca in cevapla(soru, sonuclar, akis=True, esik=esik):
-        metin += parca
-        yer.markdown(metin)
+    with st.spinner("Cevap yazılıyor..."):
+        cevap = cevapla(soru, sonuclar, esik=esik)
+    st.markdown(cevap.replace("\n", "  \n"))
     st.caption(f"{time.time() - baslangic:.1f} saniye")
 
     with st.expander("Modele verilen parçalar"):
