@@ -7,7 +7,8 @@ soru-cevap asistanı. Cevapları [Microsoft Foundry Local](https://learn.microso
 yaklaşımıyla belgelerin içinden alıyor. İlk kurulumdaki model indirme dışında internet gerekmiyor.
 
 Bu proje Microsoft Türkiye Yaz Okulu 2026 kapsamında, "Building Your First Local RAG Application
-with Foundry Local" konusu için yapıldı.
+with Foundry Local" konusu için yapıldı. Ne yaptığımı ve ne öğrendiğimi anlattığım kısa video:
+https://drive.google.com/file/d/1JOWI-GT7PYEPfU8ZCl0rfjmnjFi-yZ8m/view?usp=sharing
 
 ![Örnek cevap](docs/ekran-goruntuleri/cevap.png)
 
