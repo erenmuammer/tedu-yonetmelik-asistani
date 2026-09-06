@@ -7,7 +7,7 @@ VERITABANI = KOK / "yonetmelik.db"
 
 # Foundry Local kataloğundaki model isimleri (alias)
 EMBEDDING_MODELI = "qwen3-embedding-0.6b"
-CHAT_MODELI = "phi-4-mini"
+CHAT_MODELI = "qwen3-4b"
 
 # Retrieval ayarları
 UST_K = 4                 # soru için en fazla kaç parça getirilecek
