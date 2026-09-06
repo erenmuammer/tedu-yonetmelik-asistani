@@ -1,0 +1,4 @@
+foundry-local-sdk==2.0.1
+numpy==2.5.3
+streamlit==1.63.0
+pytest==9.1.1
