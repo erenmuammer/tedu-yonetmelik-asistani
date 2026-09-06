@@ -1,40 +1,72 @@
-"""Foundry Local modellerini yükleyen tek yer.
+"""Foundry Local servisine bağlanan tek yer.
 
-Modeller ilk seferde katalogdan indiriliyor (embedding ~500 MB, phi-4-mini ~3.7 GB),
-sonrasında ~/.foundry/cache altından çalışıyor ve internet gerekmiyor.
+Foundry Local'ın kendi servisi (foundry server) arka planda çalışıyor ve
+OpenAI uyumlu bir HTTP API açıyor. Uygulama bu API'ye openai paketiyle
+bağlanıyor. Modellerin önce servise yüklenmesi gerekiyor, onu da
+`foundry model load` komutuyla yapıyoruz.
+
+Neden SDK değil de HTTP: pip'teki foundry-local-sdk 2.0.1 bu Mac'te
+WebGPU desteklemediği için modelleri CPU'da çalıştırıyordu, CLI servisi ise
+GPU (Metal) kullanıyor ve cevaplar çok daha hızlı geliyor. Servis Windows ve
+Linux'ta da aynı şekilde çalıştığı için bu yol taşınabilir de.
 """
-from foundry_local_sdk import Configuration, FoundryLocalManager
+import json
+import subprocess
 
-from asistan import ayarlar
+from openai import OpenAI
 
-_yonetici = None
-
-
-def yonetici():
-    global _yonetici
-    if _yonetici is None:
-        FoundryLocalManager.initialize(Configuration(app_name="tedu-yonetmelik-asistani"))
-        _yonetici = FoundryLocalManager.instance
-    return _yonetici
+KURULUM_NOTU = ("foundry komutu bulunamadı. Kurulum için: "
+                "brew tap microsoft/foundrylocal && brew install foundrylocal "
+                "(Windows: winget install Microsoft.FoundryLocal)")
 
 
-def modeli_hazirla(alias: str):
-    """Modeli katalogdan bulur, gerekiyorsa indirir ve belleğe yükler."""
-    model = yonetici().catalog.get_model(alias)
-    if model is None:
-        raise SystemExit(f"'{alias}' Foundry Local kataloğunda bulunamadı ('foundry model list' ile bakın).")
-    if not model.is_cached:
-        print(f"{alias} indiriliyor, bu sadece ilk seferde olacak...")
-        model.download(lambda p: print(f"\r  %{p:.0f}", end="", flush=True))
-        print()
-    if not model.is_loaded:
-        model.load()
-    return model
+def _komut(*args: str) -> dict:
+    """foundry CLI komutunu çalıştırıp JSON çıktısını döner."""
+    try:
+        sonuc = subprocess.run(["foundry", *args, "-o", "json"],
+                               capture_output=True, text=True, timeout=1800)
+    except FileNotFoundError:
+        raise SystemExit(KURULUM_NOTU)
+    try:
+        return json.loads(sonuc.stdout)
+    except json.JSONDecodeError:
+        raise SystemExit(f"foundry {' '.join(args)} beklenmeyen çıktı verdi:\n{sonuc.stdout}{sonuc.stderr}")
 
 
-def embedding_modeli():
-    return modeli_hazirla(ayarlar.EMBEDDING_MODELI)
+def sunucu_adresi() -> str:
+    """Servis çalışmıyorsa başlatır, HTTP adresini döner."""
+    durum = _komut("server", "status")
+    if not durum.get("running"):
+        print("Foundry Local servisi başlatılıyor...")
+        subprocess.run(["foundry", "server", "start"], capture_output=True, text=True, timeout=120)
+        durum = _komut("server", "status")
+    return durum["webUrls"][0]
 
 
-def chat_modeli(alias: str | None = None):
-    return modeli_hazirla(alias or ayarlar.CHAT_MODELI)
+def modeli_yukle(alias: str) -> str:
+    """Modeli servise yükler (ilk seferde indirir) ve tam model id'sini döner."""
+    kayitli = {m["alias"]: m for m in _komut("cache", "list")["models"]}
+    bilgi = kayitli.get(alias)
+    if bilgi and bilgi.get("loaded"):
+        return bilgi["id"]
+    if not bilgi or not bilgi.get("cached"):
+        print(f"{alias} indiriliyor, bu sadece ilk seferde olacak (birkaç dakika sürebilir)...")
+        subprocess.run(["foundry", "model", "download", alias], timeout=3600)
+    sonuc = _komut("model", "load", alias)
+    if not sonuc.get("success"):
+        raise SystemExit(f"{alias} yüklenemedi: {sonuc.get('message')}")
+    for m in _komut("model", "list", "--loaded")["models"]:
+        if m["alias"] == alias:
+            return m["id"]
+    raise SystemExit(f"{alias} yüklendi ama listede görünmüyor.")
+
+
+_istemci = None
+
+
+def istemci() -> OpenAI:
+    global _istemci
+    if _istemci is None:
+        # api_key zorunlu bir alan ama yerel servis kontrol etmiyor
+        _istemci = OpenAI(base_url=sunucu_adresi() + "/v1", api_key="yerel")
+    return _istemci
