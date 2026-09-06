@@ -35,15 +35,22 @@ def mesajlar(soru: str, sonuclar: list[Sonuc], model: str = ayarlar.CHAT_MODELI)
 
 
 def tekrarlari_sil(metin: str) -> str:
-    """Model aynı cümleyi iki kere yazabiliyor; birebir tekrar eden cümleleri atar."""
-    cumleler = re.split(r"(?<=[.!?])\s+", metin.strip())
-    gorulen, temiz = set(), []
-    for c in cumleler:
-        anahtar = c.strip().lower()
-        if anahtar and anahtar not in gorulen:
-            gorulen.add(anahtar)
-            temiz.append(c.strip())
-    return " ".join(temiz)
+    """Model aynı cümleyi iki kere yazabiliyor; birebir tekrar eden cümleleri atar.
+
+    Satır yapısı (liste maddeleri gibi) korunuyor.
+    """
+    gorulen: set[str] = set()
+    satirlar = []
+    for satir in metin.strip().splitlines():
+        temiz = []
+        for c in re.split(r"(?<=[.!?])\s+", satir.strip()):
+            anahtar = c.strip().lower()
+            if anahtar and anahtar not in gorulen:
+                gorulen.add(anahtar)
+                temiz.append(c.strip())
+        if temiz:
+            satirlar.append(" ".join(temiz))
+    return "\n".join(satirlar)
 
 
 def temizle(metin: str) -> str:

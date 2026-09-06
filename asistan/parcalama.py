@@ -5,9 +5,8 @@ sayfa numarası tekrar ediyor. Önce bunlar ayıklanıyor, sonra metin
 "MADDE 5 –" gibi madde başlıklarından bölünüyor. Bir madde çok uzunsa
 fıkra sınırlarından ((1), (2) ...) küçük parçalara ayrılıyor.
 
-Paragraf uzunluğuna göre bölmeyi de denedim ama madde ortasından kesince
-retrieval belirgin şekilde kötüleşiyordu; yönetmelik gibi metinlerde doğal
-birim madde.
+Sabit uzunlukta kesmek maddeleri ortasından bölerdi; yönetmelik gibi
+metinlerde doğal birim madde olduğu için madde başlıklarından bölüyorum.
 """
 import re
 from dataclasses import dataclass

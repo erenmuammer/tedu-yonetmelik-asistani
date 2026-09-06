@@ -54,7 +54,7 @@ if soru.strip():
         sonuclar = arama_motoru().ara(soru, ust_k)
     with st.spinner("Cevap yazılıyor..."):
         cevap = cevapla(soru, sonuclar, esik=esik)
-    st.markdown(cevap.replace("\n", "  \n"))
+    st.markdown(cevap.replace("\nKaynak:", "\n\nKaynak:").replace("\n", "  \n"))
     st.caption(f"{time.time() - baslangic:.1f} saniye")
 
     with st.expander("Modele verilen parçalar"):
