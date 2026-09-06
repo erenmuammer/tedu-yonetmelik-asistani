@@ -42,3 +42,11 @@ def test_uzun_madde_fikralardan_bolunuyor():
     assert all(p.madde == "Madde 9" for p in parcalar)
     assert all(len(p.metin) <= 600 for p in parcalar)
     assert "".join(p.metin for p in parcalar).count("(") == 7
+
+
+def test_cok_uzun_fikra_cumlelerden_bolunuyor():
+    metin = "(1) " + " ".join(f"Bu {i} numaralı cümledir ve biraz uzundur." for i in range(60))
+    parcalar = uzun_maddeleri_bol([Parca("X", "Madde 5", "", metin)], maks=500)
+    assert len(parcalar) >= 4
+    assert all(len(p.metin) <= 500 for p in parcalar)
+    assert " ".join(p.metin for p in parcalar) == metin

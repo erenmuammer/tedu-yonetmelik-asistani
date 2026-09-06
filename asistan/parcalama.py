@@ -97,19 +97,41 @@ def maddelere_bol(satirlar: list[str], kaynak: str) -> list[Parca]:
     return parcalar
 
 
+CUMLE_SONU = re.compile(r"(?<=[.;])\s+(?=[a-zçğıöşüA-ZÇĞİÖŞÜ(\d])")
+
+
+def _birimlere_ayir(metin: str, maks: int) -> list[str]:
+    """Metni fıkralara, çok uzun fıkraları da cümlelere böler."""
+    birimler = []
+    for fikra in FIKRA_DESENI.split(metin):
+        fikra = fikra.strip()
+        if not fikra:
+            continue
+        if len(fikra) <= maks:
+            birimler.append(fikra)
+        else:
+            birimler.extend(c.strip() for c in CUMLE_SONU.split(fikra) if c.strip())
+    return birimler
+
+
 def uzun_maddeleri_bol(parcalar: list[Parca], maks: int = ayarlar.MAKS_PARCA_UZUNLUGU) -> list[Parca]:
+    """maks karakteri aşan maddeleri fıkra (gerekirse cümle) sınırlarından böler.
+
+    İlk sürümde sadece fıkralardan bölüyordum ama staj yönergesindeki gibi
+    tek fıkrası 2600 karakter olan maddeler vardı; model uzun bağlamda
+    cevabı bulamıyordu.
+    """
     sonuc = []
     for p in parcalar:
         if len(p.metin) <= maks:
             sonuc.append(p)
             continue
-        fikralar = [f.strip() for f in FIKRA_DESENI.split(p.metin) if f.strip()]
         grup: list[str] = []
-        for f in fikralar:
-            if grup and len(" ".join(grup)) + len(f) > maks:
+        for birim in _birimlere_ayir(p.metin, maks):
+            if grup and len(" ".join(grup)) + len(birim) + 1 > maks:
                 sonuc.append(Parca(p.kaynak, p.madde, p.baslik, " ".join(grup)))
                 grup = []
-            grup.append(f)
+            grup.append(birim)
         if grup:
             sonuc.append(Parca(p.kaynak, p.madde, p.baslik, " ".join(grup)))
     return sonuc
